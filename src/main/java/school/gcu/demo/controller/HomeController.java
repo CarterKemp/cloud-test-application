@@ -1,7 +1,5 @@
 package school.gcu.demo.controller;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -14,9 +12,6 @@ import school.gcu.demo.service.TaskService;
 @Controller
 public class HomeController {
 
-    private static final Logger logger =
-            LoggerFactory.getLogger(HomeController.class);
-
     private final TaskService taskService;
 
     public HomeController(TaskService taskService) {
@@ -25,8 +20,6 @@ public class HomeController {
 
     @GetMapping("/")
     public String home(Model model) {
-
-        logger.info("Loading task management home page");
 
         model.addAttribute(
                 "tasks",
@@ -37,8 +30,6 @@ public class HomeController {
 
     @GetMapping("/tasks/new")
     public String showCreateForm(Model model) {
-
-        logger.info("Opening create task form");
 
         model.addAttribute(
                 "task",
