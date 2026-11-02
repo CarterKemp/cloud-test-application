@@ -1,20 +1,32 @@
 
-name: Activity 6 - Maven Build
+name: Activity 6 - CI/CD AWS Deployment
 
 on:
   push:
     branches:
-      - activity6-devops
+      - main
+  workflow_dispatch:
 
 permissions:
+  id-token: write
   contents: read
 
+concurrency:
+  group: taskmanager-aws-deployment
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: us-east-2
+  S3_BUCKET: elasticbeanstalk-us-east-2-197976793303
+  EB_APPLICATION: taskmanager-app
+  EB_ENVIRONMENT: taskmanager-env
+
 jobs:
-  build:
+  build-and-deploy:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout code
+      - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Set up Java 21
@@ -24,11 +36,49 @@ jobs:
           java-version: '21'
           cache: maven
 
-      - name: Build Spring Boot application
+      - name: Build with Maven
         run: mvn --batch-mode clean package -DskipTests
 
-      - name: Upload JAR artifact
+      - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
           name: taskmanager-jar
-          path: target/*.jar
+          path: target/demo-0.0.1-SNAPSHOT.jar
+          if-no-files-found: error
+
+      - name: Authenticate to AWS
+        uses: aws-actions/configure-aws-credentials@v6.3.0
+        with:
+          role-to-assume: arn:aws:iam::197976793303:role/GitHubActions-TaskManager-Deploy
+          aws-region: us-east-2
+
+      - name: Upload deployment JAR to S3
+        run: |
+          aws s3 cp target/demo-0.0.1-SNAPSHOT.jar \
+            "s3://${S3_BUCKET}/activity6-deployments/${GITHUB_SHA}-${GITHUB_RUN_ID}.jar"
+
+      - name: Create Elastic Beanstalk version
+        run: |
+          aws elasticbeanstalk create-application-version \
+            --application-name "$EB_APPLICATION" \
+            --version-label "ci-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
+            --source-bundle "S3Bucket=${S3_BUCKET},S3Key=activity6-deployments/${GITHUB_SHA}-${GITHUB_RUN_ID}.jar" \
+            --process
+
+      - name: Deploy to Elastic Beanstalk
+        run: |
+          aws elasticbeanstalk update-environment \
+            --environment-name "$EB_ENVIRONMENT" \
+            --version-label "ci-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+
+      - name: Wait for deployment
+        run: |
+          aws elasticbeanstalk wait environment-updated \
+            --environment-names "$EB_ENVIRONMENT"
+
+      - name: Verify environment health
+        run: |
+          aws elasticbeanstalk describe-environments \
+            --environment-names "$EB_ENVIRONMENT" \
+            --query "Environments[*].[EnvironmentName,Status,Health,VersionLabel]" \
+            --output table
